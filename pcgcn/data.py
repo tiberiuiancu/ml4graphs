@@ -2,12 +2,13 @@ import dgl
 import metis
 import networkx as nx
 import numpy as np
+import dgl.sparse as dglsp
 import torch
 
 
 def load_dataset(name: str):
     if name == "pubmed":
-        return dgl.data.PubmedGraphDataset(raw_dir="data/pubmed")
+        return dgl.data.PubmedGraphDataset(raw_dir="data/pubmed")[0]
 
 
 def partition(graph, k=2):
@@ -16,38 +17,51 @@ def partition(graph, k=2):
     Thus we first convert to networkx, then to metis format.
     """
     edges_t = graph.all_edges()
-    edges = list(zip(edges_t[0].cpu().tolist(), edges_t[1].cpu().tolist()))
-    edges_str = list(map(str, edges))
+    edges = list(zip(edges_t[0].tolist(), edges_t[1].tolist()))
+    stringify = lambda x: f"{x[0]} {x[1]}"
+    edges_str = list(map(stringify, edges))
     nx_g = nx.parse_edgelist(edges_str)
     metis_g = metis.networkx_to_metis(nx_g)
     _, part = metis.part_graph(metis_g, nparts=k)
     return part
 
 
-def reorder_graph_by_partition(graph, partitions):
+def reorder_graph_by_partition(
+    g, partitions
+) -> tuple[list[dglsp.SparseMatrix], np.array]:
     idx = np.argsort(partitions)
     idx_mapping = dict(zip(idx, range(len(idx))))
     map_fun = lambda x: idx_mapping[x]
 
-    edges1, edges2 = graph.all_edges()
-    edges1 = edges1.apply_(map_fun)
-    edges2 = edges2.apply_(map_fun)
+    # reorder adj mat
+    adj = g.adj()
+    adj_idx = adj.indices().apply_(map_fun)
+    adj_val = adj.val
 
-    # create new adj matrix
-    adj = g.adj().clone()
-    adj.indices = torch.stack([edges1, edges2])
-
-    return adj, idx
-
-
-def split_adj_matrix(adj: torch.SparseMatrix, partitions):
-    k = max(partitions)
+    # calculate k^2 adjacency matrices
+    k = max(partitions) + 1
     splits = np.cumsum([0] + [partitions.count(x) for x in range(k)])
-    return [
-        adj[splits[i] : splits[i + 1], splits[j] : splits[j + 1]]
-        for j in range(k)
-        for i in range(k)
-    ]
+    edge_blocks = []
+    for i in range(k):
+        for j in range(k):
+            start_i, start_j = splits[i], splits[j]
+            end_i, end_j = splits[i + 1], splits[j + 1]
+
+            # select only those elements that are part of the current edge block
+            mask_i = (adj_idx[0, :] >= start_i) & (adj_idx[0, :] < end_i)
+            mask_j = (adj_idx[1, :] >= start_j) & (adj_idx[1, :] < end_j)
+            mask = mask_i & mask_j
+            if not mask.any():
+                # too sparse lol
+                continue
+
+            offsets = torch.tensor([[start_i], [start_j]], dtype=adj_idx.dtype)
+            idx_ij = adj_idx[:, mask] - offsets
+            val_ij = adj_val[mask]
+            adj_ij = dglsp.spmatrix(indices=idx_ij, val=val_ij)
+            edge_blocks.append(adj_ij)
+
+    return edge_blocks, idx
 
 
 def load_and_process_dataset(name: str, k: int = None):
@@ -55,13 +69,12 @@ def load_and_process_dataset(name: str, k: int = None):
 
     if k is not None:
         part = partition(g, k)
-        adj, idx = reorder_graph_by_partition(g, part)
-        edge_blocks = split_adj_matrix(adj, part)
+        edge_blocks, idx = reorder_graph_by_partition(g, part)
     else:
         edge_blocks = [g.adj()]
         idx = list(range(feat.shape[0]))
 
-    feat = g.ndata["feat"][idx]
+    feat = g.ndata["feat"][idx, :]
     train_mask = g.ndata["train_mask"][idx]
     val_mask = g.ndata["val_mask"][idx]
     test_mask = g.ndata["test_mask"][idx]
@@ -71,5 +84,4 @@ def load_and_process_dataset(name: str, k: int = None):
 
 
 if __name__ == "__main__":
-    g = load_dataset("pubmed")[0]
-    print(partition(g, 10))
+    print(load_and_process_dataset("pubmed", 2))
