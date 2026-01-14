@@ -7,8 +7,13 @@ import torch
 
 
 def load_dataset(name: str):
-    if name == "pubmed":
-        return dgl.data.PubmedGraphDataset(raw_dir="data/pubmed")[0]
+    mapping = {"pubmed": dgl.data.PubmedGraphDataset, "reddit": dgl.data.RedditDataset}
+
+    dataset = mapping.get(name)
+    if dataset is None:
+        raise ValueError(f"Unknown dataset {name}")
+
+    return dataset(raw_dir=f"data/{name}")[0]
 
 
 def partition(graph, k=2):
