@@ -32,14 +32,13 @@ def partition(graph, k=2):
 
 
 def reorder_graph_by_partition(
-    g, partitions
+    adj, partitions
 ) -> tuple[list[dglsp.SparseMatrix], np.array]:
     idx = np.argsort(partitions)
     idx_mapping = dict(zip(idx, range(len(idx))))
     map_fun = lambda x: idx_mapping[x]
 
     # reorder adj mat
-    adj = g.adj()
     adj_idx = adj.indices().apply_(map_fun)
     adj_val = adj.val
 
@@ -71,12 +70,21 @@ def reorder_graph_by_partition(
 
 def load_and_process_dataset(name: str, k: int = None):
     g = load_dataset(name)
+    adj: dglsp.SparseMatrix = g.adj()
+
+    # Normalize adjacency matrix: D^-1/2 * A * D^-1/2
+    # TODO: perhaps generalize this to non-binary adj matrix
+    deg = dglsp.sum(adj, dim=1)
+    deg_inv_sqrt = torch.pow(deg, -0.5)
+    deg_inv_sqrt[torch.isinf(deg_inv_sqrt)] = 0
+    D_inv_sqrt = dglsp.diag(deg_inv_sqrt)
+    adj = D_inv_sqrt @ adj @ D_inv_sqrt
 
     if k is not None:
         part = partition(g, k)
-        edge_blocks, idx = reorder_graph_by_partition(g, part)
+        edge_blocks, idx = reorder_graph_by_partition(adj, part)
     else:
-        edge_blocks = [g.adj()]
+        edge_blocks = [adj]
         idx = list(range(feat.shape[0]))
 
     feat = g.ndata["feat"][idx, :]
