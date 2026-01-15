@@ -66,7 +66,9 @@ def reorder_graph_by_partition(
             offsets = torch.tensor([[start_i], [start_j]], dtype=adj_idx.dtype)
             idx_ij = adj_idx[:, mask] - offsets
             val_ij = adj_val[mask]
-            adj_ij = dglsp.spmatrix(indices=idx_ij, val=val_ij)
+            adj_ij = dglsp.spmatrix(
+                indices=idx_ij, val=val_ij, shape=(end_i - start_i, end_j - start_j)
+            )
             edge_blocks[i].append(adj_ij)
 
     return edge_blocks, idx, splits

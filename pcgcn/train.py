@@ -45,7 +45,7 @@ def train(
 
 if __name__ == "__main__":
     edge_blocks, feat, train_mask, val_mask, test_mask, labels, splits = (
-        load_and_process_dataset("pubmed", 2)
+        load_and_process_dataset("pubmed", 3)
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = PCGCN(
