@@ -1,9 +1,12 @@
+from typing import TypeAlias
 import dgl
 import metis
 import networkx as nx
 import numpy as np
 import dgl.sparse as dglsp
 import torch
+
+EdgeBlocks: TypeAlias = list[list[dglsp.SparseMatrix | torch.Tensor]]
 
 
 def load_dataset(name: str):
@@ -57,6 +60,7 @@ def reorder_graph_by_partition(
             mask = mask_i & mask_j
             if not mask.any():
                 # too sparse lol
+                edge_blocks[i].append(None)
                 continue
 
             offsets = torch.tensor([[start_i], [start_j]], dtype=adj_idx.dtype)
