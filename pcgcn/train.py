@@ -27,12 +27,11 @@ def train(
 ) -> float:
     opt = torch.optim.Adam(model.parameters())
     loss = torch.nn.CrossEntropyLoss()
-    model.train()
 
     for i in range(iterations):
         model.train()
         opt.zero_grad()
-        logits = model(feat.to(model.device))
+        logits = model(feat)
         iter_loss = loss(logits[train_mask], labels[train_mask])
         iter_loss.backward()
         opt.step()
