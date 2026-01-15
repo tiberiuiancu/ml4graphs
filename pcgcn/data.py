@@ -45,7 +45,7 @@ def reorder_graph_by_partition(
     # calculate k^2 adjacency matrices
     k = max(partitions) + 1
     splits = np.cumsum([0] + [partitions.count(x) for x in range(k)])
-    edge_blocks = []
+    edge_blocks = [[] for _ in range(k)]
     for i in range(k):
         for j in range(k):
             start_i, start_j = splits[i], splits[j]
@@ -63,9 +63,9 @@ def reorder_graph_by_partition(
             idx_ij = adj_idx[:, mask] - offsets
             val_ij = adj_val[mask]
             adj_ij = dglsp.spmatrix(indices=idx_ij, val=val_ij)
-            edge_blocks.append(adj_ij)
+            edge_blocks[i].append(adj_ij)
 
-    return edge_blocks, idx
+    return edge_blocks, idx, splits
 
 
 def load_and_process_dataset(name: str, k: int = None):
@@ -92,10 +92,11 @@ def load_and_process_dataset(name: str, k: int = None):
 
     if k is not None:
         part = partition(g, k)
-        edge_blocks, idx = reorder_graph_by_partition(adj, part)
+        edge_blocks, idx, splits = reorder_graph_by_partition(adj, part)
     else:
-        edge_blocks = [adj]
+        edge_blocks = [[adj]]
         idx = list(range(feat.shape[0]))
+        splits = [0, n_nodes]
 
     feat = g.ndata["feat"][idx, :]
     train_mask = g.ndata["train_mask"][idx]
@@ -103,7 +104,7 @@ def load_and_process_dataset(name: str, k: int = None):
     test_mask = g.ndata["test_mask"][idx]
     label = g.ndata["label"][idx]
 
-    return edge_blocks, feat, train_mask, val_mask, test_mask, label
+    return edge_blocks, feat, train_mask, val_mask, test_mask, label, splits
 
 
 if __name__ == "__main__":
