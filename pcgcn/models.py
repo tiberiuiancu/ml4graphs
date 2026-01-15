@@ -27,7 +27,6 @@ class PCGCN(nn.Module):
                 adj,
                 splits,
                 device,
-                activation=(i != n_layers - 1),  # relu except last layer
             )
             for i in range(n_layers)
         ]
