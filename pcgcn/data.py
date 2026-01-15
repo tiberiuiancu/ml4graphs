@@ -6,6 +6,8 @@ import numpy as np
 import dgl.sparse as dglsp
 import torch
 
+from pcgcn.autotune import autotune_sparse
+
 EdgeBlocks: TypeAlias = list[list[dglsp.SparseMatrix | torch.Tensor]]
 
 
@@ -74,7 +76,7 @@ def reorder_graph_by_partition(
     return edge_blocks, idx, splits
 
 
-def load_and_process_dataset(name: str, k: int = None):
+def load_and_process_dataset(name: str, k: int = 1, autotune: bool = True):
     g = load_dataset(name)
     adj: dglsp.SparseMatrix = g.adj()
     n_nodes = adj.shape[0]
@@ -96,7 +98,7 @@ def load_and_process_dataset(name: str, k: int = None):
     D_inv_sqrt = dglsp.diag(deg_inv_sqrt)
     adj = D_inv_sqrt @ adj @ D_inv_sqrt
 
-    if k is not None:
+    if k > 1:
         part = partition(g, k)
         edge_blocks, idx, splits = reorder_graph_by_partition(adj, part)
     else:
@@ -109,6 +111,14 @@ def load_and_process_dataset(name: str, k: int = None):
     val_mask = g.ndata["val_mask"][idx]
     test_mask = g.ndata["test_mask"][idx]
     label = g.ndata["label"][idx]
+
+    if autotune:
+        for i in range(k):
+            for j in range(k):
+                if edge_blocks[i][j] is not None:
+                    edge_blocks[i][j] = autotune_sparse(
+                        edge_blocks[i][j], (edge_blocks[i][j].shape[1], 1024)
+                    )
 
     return edge_blocks, feat, train_mask, val_mask, test_mask, label, splits
 
