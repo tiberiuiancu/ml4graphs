@@ -71,9 +71,19 @@ def reorder_graph_by_partition(
 def load_and_process_dataset(name: str, k: int = None):
     g = load_dataset(name)
     adj: dglsp.SparseMatrix = g.adj()
+    n_nodes = adj.shape[0]
 
-    # Normalize adjacency matrix: D^-1/2 * A * D^-1/2
-    # TODO: perhaps generalize this to non-binary adj matrix
+    # add self loops for normalization
+    idx = adj.indices()
+    val = adj.val
+    r = torch.arange(0, n_nodes, 1, dtype=idx.dtype)[None, :]
+    o = torch.ones(n_nodes, dtype=val.dtype)
+    self_loops = torch.concat((r, r))
+    idx = torch.concat((idx, self_loops), dim=-1)
+    val = torch.concat((val, o))
+    adj = dglsp.spmatrix(indices=idx, val=val).coalesce()
+
+    # normalize adjacency matrix: D^-1/2 * A * D^-1/2
     deg = dglsp.sum(adj, dim=1)
     deg_inv_sqrt = torch.pow(deg, -0.5)
     deg_inv_sqrt[torch.isinf(deg_inv_sqrt)] = 0
