@@ -24,6 +24,7 @@ def train(
     val_mask: torch.Tensor,
     test_mask: torch.Tensor,
     labels: torch.Tensor,
+    do_eval: bool = True,
 ) -> float:
     opt = torch.optim.Adam(model.parameters())
     loss = torch.nn.CrossEntropyLoss()
@@ -36,10 +37,10 @@ def train(
         iter_loss.backward()
         opt.step()
 
-        if i % 100 == 99:
+        if i % 100 == 99 and do_eval:
             print(evaluate(model, feat, val_mask, labels))
 
-    return evaluate(model, feat, test_mask, labels)
+    return evaluate(model, feat, test_mask, labels) if do_eval else None
 
 
 if __name__ == "__main__":
