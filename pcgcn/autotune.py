@@ -4,11 +4,11 @@ import numpy as np
 import torch
 
 
-def autotune_sparse(
+def autotune(
     sparse: dglsp.SparseMatrix,
     shape: tuple[int, int],
-    n_iter: int = 10,
-    warmup: int = 10,
+    n_iter: int = 1,
+    warmup: int = 1,
 ):
     def run(mat):
         other = torch.rand(shape, dtype=sparse.dtype, device=sparse.device)
@@ -22,7 +22,5 @@ def autotune_sparse(
     dense = sparse.to_dense()
     [run(dense) for _ in range(warmup)]
     dense_time = np.mean([run(dense) for _ in range(n_iter)])
-
-    print(sparse_time, dense_time)
 
     return dense if dense_time < sparse_time else sparse

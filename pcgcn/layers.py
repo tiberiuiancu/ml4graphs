@@ -29,7 +29,7 @@ class GraphConvPartLayer(nn.Module):
         a = self.linear(x)
 
         # adj @ x: [N, N] @ [N, OUT] = [N, OUT]
-        out = torch.zeros_like(x)
+        out = torch.zeros_like(a)
         for i in range(len(self.adj)):
             # grab a^l_k
             start_i, end_i = self.splits[i], self.splits[i + 1]
