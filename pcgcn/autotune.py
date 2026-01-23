@@ -23,4 +23,4 @@ def autotune(
     [run(dense) for _ in range(warmup)]
     dense_time = np.mean([run(dense) for _ in range(n_iter)])
 
-    return dense if dense_time < sparse_time else sparse
+    return dense.pin_memory() if dense_time < sparse_time else sparse
