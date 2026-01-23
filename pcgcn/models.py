@@ -1,7 +1,7 @@
 from torch import nn
 import torch
 
-from pcgcn.data import EdgeBlocks
+from pcgcn.edge_blocks import EdgeBlocks
 from pcgcn.layers import GraphConvPartLayer
 
 
@@ -12,8 +12,7 @@ class PCGCN(nn.Module):
         out_size: int,
         hidden_size: int,
         n_layers: int,
-        adj: EdgeBlocks,
-        splits: list[int],
+        eb: EdgeBlocks,
         device="cpu",
     ):
         super().__init__()
@@ -22,11 +21,10 @@ class PCGCN(nn.Module):
         sizes = [in_size] + [hidden_size] * (n_layers)
         layers = [
             GraphConvPartLayer(
-                sizes[i],
-                sizes[i + 1],
-                adj,
-                splits,
-                device,
+                in_features=sizes[i],
+                out_features=sizes[i + 1],
+                eb=eb,
+                device=device,
             )
             for i in range(n_layers)
         ]

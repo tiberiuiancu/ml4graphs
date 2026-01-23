@@ -44,17 +44,26 @@ def train(
 
 
 if __name__ == "__main__":
-    edge_blocks, feat, train_mask, val_mask, test_mask, labels, splits = (
-        load_and_process_dataset("pubmed", 3)
-    )
+    k = 3
+    ufactor = 30
+    hidden_size = 1024
+    preload_adj = 2
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    eb, feat, train_mask, val_mask, test_mask, labels = load_and_process_dataset(
+        "pubmed",
+        k=k,
+        ufactor=ufactor,
+        device=device,
+        autotune_hidden_size=hidden_size,
+        preload_adj=preload_adj,
+    )
     model = PCGCN(
         in_size=feat.shape[1],
         out_size=labels.max().item() + 1,
-        hidden_size=feat.shape[1],
+        hidden_size=hidden_size,
         n_layers=3,
-        adj=edge_blocks,
-        splits=splits,
+        eb=eb,
         device=device,
     )
     acc = train(

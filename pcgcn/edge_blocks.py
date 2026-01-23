@@ -1,0 +1,101 @@
+import torch
+import dgl.sparse as dglsp
+
+from pcgcn.autotune import autotune
+
+
+class EdgeBlocks:
+    def __init__(
+        self,
+        eb: list[list[torch.Tensor | dglsp.SparseMatrix]],
+        splits: list[int],
+        device="cpu",
+        autotune_hidden_size: int = None,
+        preload_adj: int = 0,
+    ):
+        self.eb = eb
+        self.splits = splits
+        self.device = device
+        self.k = len(self.eb)
+        self.is_cuda = device != "cpu"
+
+        if autotune_hidden_size is not None:
+            for i in range(self.k):
+                for j in range(self.k):
+                    if eb[i][j] is not None:
+                        eb[i][j] = autotune(
+                            eb[i][j],
+                            (eb[i][j].shape[1], autotune_hidden_size),
+                        )
+
+        self.custreams = [
+            [torch.cuda.Stream() for j in range(self.k) if self.is_cuda]
+            for i in range(self.k)
+        ]
+
+        self.next_idx = (0, 0)
+        self.preloads = {}
+        curr = (0, 0)
+        self.last_preload = None
+        for _ in range(preload_adj):
+            self.last_preload = self.preload(curr[0], curr[1])
+            curr = self._next_idx(*curr)
+
+    def __len__(self):
+        return self.k**2
+
+    def _next_idx(self, i, j):
+        j = j + 1
+        if j >= len(self.eb):
+            i = i + 1
+            j = 0
+        if i >= len(self.eb):
+            i = 0
+        return i, j
+
+    def try_async_move(self, i, j):
+        """moves adj tensor to cuda via stream, if possible"""
+        adj = self.eb[i][j]
+        stream = self.custreams[i][j]
+
+        if (
+            isinstance(adj, torch.Tensor)
+            and self.is_cuda
+            and self.last_preload is not None
+        ):
+            with torch.cuda.stream(stream):
+                return (adj.cuda(non_blocking=True), stream)
+        return (adj.to(self.device), None)
+
+    def preload(self, i, j):
+        """starts preload of tensor at given index"""
+        self.preloads[(i, j)] = self.try_async_move(i, j)
+        return (i, j)
+
+    def preload_next(self):
+        """enqueues a move to cuda of the next tensor in sequence"""
+        self.last_preload = self._next_idx(*self.last_preload)
+        self.preload(*self.last_preload)
+
+    def retrieve_adj(self, i, j):
+        """retrieves adjacency matrix tensor, and triggers preloads"""
+        if self.last_preload is None:
+            return self.try_async_move(i, j)[0]
+
+        adj, stream = self.preloads[(i, j)]
+        if stream is not None:
+            stream.synchronize()
+        elif adj is not None:
+            adj.to(self.device)
+        del self.preloads[(i, j)]
+        self.preload_next()
+        return adj
+
+    def get_next_adj(self):
+        """acts as an interator over the adjacency matrices"""
+        i, j = self.next_idx[0], self.next_idx[1]
+        start_i, end_i = self.splits[i], self.splits[i + 1]
+        start_j, end_j = self.splits[j], self.splits[j + 1]
+        adj = self.retrieve_adj(i, j)
+        self.next_idx = self._next_idx(i, j)
+        return adj, start_i, end_i, start_j, end_j

@@ -19,7 +19,7 @@ def _objective(k: int, ufactor: int):
         out_size=labels.max().item() + 1,
         hidden_size=1024,
         n_layers=2,
-        adj=edge_blocks,
+        eb=edge_blocks,
         splits=splits,
         device=device,
     )

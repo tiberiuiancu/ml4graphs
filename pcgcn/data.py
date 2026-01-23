@@ -7,8 +7,7 @@ import dgl.sparse as dglsp
 import torch
 
 from pcgcn.autotune import autotune
-
-EdgeBlocks: TypeAlias = list[list[dglsp.SparseMatrix | torch.Tensor]]
+from pcgcn.edge_blocks import EdgeBlocks
 
 
 def load_dataset(name: str):
@@ -69,9 +68,7 @@ def reorder_graph_by_partition(
                 edge_blocks[i].append(None)
                 continue
 
-            offsets = torch.tensor(
-                [[start_i], [start_j]], dtype=adj_idx.dtype
-            )
+            offsets = torch.tensor([[start_i], [start_j]], dtype=adj_idx.dtype)
             idx_ij = adj_idx[:, mask] - offsets
             val_ij = adj_val[mask]
             adj_ij = dglsp.spmatrix(
@@ -88,7 +85,9 @@ def load_and_process_dataset(
     graph: str | dgl.DGLGraph,
     k: int = 1,
     ufactor: int = 30,
+    device: str = "cpu",
     autotune_hidden_size: int = None,
+    preload_adj: int = 0,
 ):
     g = load_dataset(graph) if isinstance(graph, str) else graph
     g = g.add_self_loop()
@@ -129,16 +128,15 @@ def load_and_process_dataset(
     except KeyError:
         feat = label = None
 
-    if autotune_hidden_size is not None:
-        for i in range(k):
-            for j in range(k):
-                if edge_blocks[i][j] is not None:
-                    edge_blocks[i][j] = autotune(
-                        edge_blocks[i][j],
-                        (edge_blocks[i][j].shape[1], autotune_hidden_size),
-                    )
+    eb = EdgeBlocks(
+        eb=edge_blocks,
+        splits=splits,
+        device=device,
+        autotune_hidden_size=autotune_hidden_size,
+        preload_adj=preload_adj,
+    )
 
-    return edge_blocks, feat, train_mask, val_mask, test_mask, label, splits
+    return eb, feat, train_mask, val_mask, test_mask, label
 
 
 if __name__ == "__main__":
