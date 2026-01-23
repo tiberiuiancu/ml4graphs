@@ -62,12 +62,4 @@ def test(n: int, feat_size: int = 512, hidden_dim: int = 1024):
 
 
 if __name__ == "__main__":
-    _handler = lambda prof: prof.export_chrome_trace("trace.json")
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        on_trace_ready=_handler,
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True,
-    ) as prof:
-        test(2**13)
+    test(2**13)
