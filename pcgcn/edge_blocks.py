@@ -56,7 +56,7 @@ class EdgeBlocks:
     def try_async_move(self, i, j):
         """moves adj tensor to cuda via stream, if possible"""
         adj = self.eb[i][j]
-        stream = self.custreams[i][j]
+        stream = self.custreams[i][j] if self.is_cuda else None
 
         if (
             isinstance(adj, torch.Tensor)
