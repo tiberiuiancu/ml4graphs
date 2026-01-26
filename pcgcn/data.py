@@ -6,7 +6,6 @@ import numpy as np
 import dgl.sparse as dglsp
 import torch
 
-from pcgcn.autotune import autotune
 from pcgcn.edge_blocks import EdgeBlocks
 
 
