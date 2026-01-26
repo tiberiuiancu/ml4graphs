@@ -99,3 +99,47 @@ class EdgeBlocks:
         adj = self.retrieve_adj(i, j)
         self.next_idx = self._next_idx(i, j)
         return adj, start_i, end_i, start_j, end_j
+
+    def save(self, fp: str) -> None:
+        """saves to file"""
+
+        def _serialize_adj(x):
+            if isinstance(x, torch.Tensor):
+                o = x
+                t = "dense"
+            else:
+                o = {"val": x.val, "idx": x.indices(), "shape": x.shape}
+                t = "sparse"
+
+            return {"type": t, "object": o}
+
+        eb_save = [[_serialize_adj(x) for x in y] for y in self.eb]
+        to_save = {"splits": self.splits, "eb": eb_save}
+        torch.save(to_save, fp)
+
+    @classmethod
+    def from_file(
+        cls,
+        fp: str,
+        device="cpu",
+        autotune_hidden_size: int = None,
+        preload_adj: int = 0,
+    ) -> "EdgeBlocks":
+
+        def _deserialize_adj(x):
+            o = x["object"]
+            if x["type"] == "dense":
+                return o
+            return dglsp.spmatrix(indices=o["idx"], val=o["val"], shape=o["shape"])
+
+        eb_load = torch.load(fp)
+        eb = [[_deserialize_adj(x) for x in y] for y in eb_load["eb"]]
+        splits = eb_load["splits"]
+
+        return cls(
+            eb=eb,
+            splits=splits,
+            device=device,
+            autotune_hidden_size=autotune_hidden_size,
+            preload_adj=preload_adj,
+        )
