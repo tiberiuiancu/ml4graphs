@@ -29,7 +29,7 @@ class GraphConvPartLayer(nn.Module):
 
         # adj @ x: [N, N] @ [N, OUT] = [N, OUT]
         out = torch.zeros_like(a)
-        for _ in range(len(self)):
+        for _ in range(len(self.eb)):
             adj, start_i, end_i, start_j, end_j = self.eb.get_next_adj()
             if adj is None:
                 continue
