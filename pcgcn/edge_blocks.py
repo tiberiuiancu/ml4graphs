@@ -1,5 +1,6 @@
 import torch
 import dgl.sparse as dglsp
+import gc
 
 from pcgcn.autotune import autotune
 
@@ -7,7 +8,7 @@ from pcgcn.autotune import autotune
 class EdgeBlocks:
     def __init__(
         self,
-        eb: list[list[torch.Tensor | dglsp.SparseMatrix]],
+        eb: list[list[dglsp.SparseMatrix]],
         splits: list[int],
         device="cpu",
         autotune_hidden_size: int = None,
@@ -19,14 +20,16 @@ class EdgeBlocks:
         self.k = len(self.eb)
         self.is_cuda = device != "cpu"
 
-        if autotune_hidden_size is not None:
-            for i in range(self.k):
-                for j in range(self.k):
-                    if eb[i][j] is not None:
-                        eb[i][j] = autotune(
+        for i in range(self.k):
+            for j in range(self.k):
+                if eb[i][j] is not None:
+                    if autotune_hidden_size is not None:
+                        self.eb[i][j] = autotune(
                             eb[i][j],
                             (eb[i][j].shape[1], autotune_hidden_size),
                         )
+                    if isinstance(eb[i][j], dglsp.SparseMatrix):
+                        self.eb[i][j] = self.eb[i][j].to(self.device)
 
         self.custreams = [
             [torch.cuda.Stream() for j in range(self.k) if self.is_cuda]
@@ -65,6 +68,7 @@ class EdgeBlocks:
         ):
             with torch.cuda.stream(stream):
                 return (adj.cuda(non_blocking=True), stream)
+
         return (adj.to(self.device), None)
 
     def preload(self, i, j):
@@ -82,12 +86,12 @@ class EdgeBlocks:
         if self.last_preload is None:
             return self.try_async_move(i, j)[0]
 
-        adj, stream = self.preloads[(i, j)]
+        adj, stream = self.preloads.pop((i, j))
         if stream is not None:
             stream.synchronize()
         elif adj is not None:
-            adj.to(self.device)
-        del self.preloads[(i, j)]
+            adj = adj.to(self.device)
+
         self.preload_next()
         return adj
 
@@ -99,6 +103,14 @@ class EdgeBlocks:
         adj = self.retrieve_adj(i, j)
         self.next_idx = self._next_idx(i, j)
         return adj, start_i, end_i, start_j, end_j
+
+    def n_sparse(self):
+        acc = 0
+        for i in range(self.k):
+            for j in range(self.k):
+                if isinstance(self.eb[i][j], dglsp.SparseMatrix):
+                    acc += 1
+        return acc
 
     def save(self, fp: str) -> None:
         """saves to file"""
@@ -122,7 +134,6 @@ class EdgeBlocks:
         cls,
         fp: str,
         device="cpu",
-        autotune_hidden_size: int = None,
         preload_adj: int = 0,
     ) -> "EdgeBlocks":
 
@@ -140,6 +151,6 @@ class EdgeBlocks:
             eb=eb,
             splits=splits,
             device=device,
-            autotune_hidden_size=autotune_hidden_size,
             preload_adj=preload_adj,
+            # note: no autotune needed, since presumably this has already been autotuned before
         )
