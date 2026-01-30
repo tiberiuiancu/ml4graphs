@@ -79,10 +79,6 @@ def profile_fwd(
     autotune_hidden_size: int,
     force_regen: bool,
 ):
-    trace_fp = f"out/traces/trace_{n}_{k}_{preload}.json"
-    mem_fp = f"out/traces/mem_{n}_{k}_{preload}.pickle"
-    results_fp = f"out/results.csv"
-
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     x = torch.rand((n, feat_size), device="cuda", dtype=torch.float32)
@@ -96,6 +92,7 @@ def profile_fwd(
         preload=preload,
         force_regen=force_regen,
     )
+    n_sparse = eb.n_sparse()
 
     n = x.shape[0]
     model = PCGCN(
@@ -106,8 +103,11 @@ def profile_fwd(
         eb=eb,
         device="cuda",
     )
-
     model.train(False)
+
+    trace_fp = f"out/traces/trace_{n}_{m}_{k}_{n_sparse}_{preload}.json"
+    mem_fp = f"out/traces/mem_{n}_{m}_{k}_{n_sparse}_{preload}.pickle"
+    results_fp = f"out/results.csv"
 
     def _handler(prof):
         prof.export_chrome_trace(trace_fp)
@@ -125,26 +125,8 @@ def profile_fwd(
             model(x)
             elapsed = time.time() - start
 
-    write_results(results_fp, n, m, k, seed, eb.n_sparse(), elapsed, end="\n")
+    write_results(results_fp, n, m, k, seed, n_sparse, elapsed, end="\n")
     torch.cuda.memory._dump_snapshot(mem_fp)
-
-
-def find_min_k(n: int):
-    adj_size = n**2 * 4  # bytes
-    gpu_memory = (
-        torch.cuda.mem_get_info()[0] - 2**30
-    )  # gpu mem - 1GB reserved for model
-
-    # assume we have to fit 3 adj in this amount of memory
-    mem_per_adj = gpu_memory // 3
-
-    # in how many pieces we have to split the adj to accomodate this
-    min_adj = adj_size / mem_per_adj
-
-    # find the next smallest number that is a perfect square
-    for k in range(1, 100):
-        if k * k >= min_adj:
-            return k
 
 
 if __name__ == "__main__":
@@ -152,22 +134,6 @@ if __name__ == "__main__":
     feat_size = 512
     hidden_size = 1024
     out_size = 128
-    preload = 2
-
-    def _launch(n, m, k, force_sparse=False):
-        autotune_hidden_size = hidden_size if not force_sparse else None
-        return profile_fwd(
-            n=n,
-            m=m,
-            k=k,
-            seed=seed,
-            hidden_size=hidden_size,
-            feat_size=feat_size,
-            out_size=out_size,
-            preload=preload,
-            autotune_hidden_size=autotune_hidden_size,
-            force_regen=True,
-        )
 
     parser = argparse.ArgumentParser(description="Profile PCGCN forward pass.")
     parser.add_argument("--n", type=int, required=True, help="Number of nodes")
@@ -179,7 +145,26 @@ if __name__ == "__main__":
     )
     parser.add_argument("--k", type=int, required=True, help="Number of partitions")
     parser.add_argument(
+        "--preload", type=int, required=False, help="Number of partitions", default=2
+    )
+    parser.add_argument(
         "--force_sparse", action="store_true", help="Force sparse mode (no autotune)"
     )
     args = parser.parse_args()
+
+    def _launch(n, m, k, force_sparse=False):
+        autotune_hidden_size = hidden_size if not force_sparse else None
+        return profile_fwd(
+            n=n,
+            m=m,
+            k=k,
+            seed=seed,
+            hidden_size=hidden_size,
+            feat_size=feat_size,
+            out_size=out_size,
+            preload=args.preload,
+            autotune_hidden_size=autotune_hidden_size,
+            force_regen=True,
+        )
+
     _launch(args.n, args.m, args.k, force_sparse=args.force_sparse)
